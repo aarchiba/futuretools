@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+# This file is based on MINUIT code, whose license is unclear, although
+# iminuit uses the same code and is released under the GPL. So at a
+# minimum this file is usable under the GPL.
+
 import concurrent.futures
 import asyncio
 import time

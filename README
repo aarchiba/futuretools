@@ -1,0 +1,13 @@
+futuretools
+===========
+
+With the introduction of concurrent.futures, python has provided a standard way
+to express concurrency in programs. The built-in ThreadPoolExecutor and
+ProcessPoolExecutor each have their limitations, but they already provide
+substantial opportunities for parallelism. More importantly, an algorithm that
+uses the concurrent.futures interface can be agnostic about the nature of the
+pool. This package is a collection of numerical code that uses
+concurrent.futures to express concurrency, and Executor implementations to allow
+these algorithms to use other kinds of parallelism, for example, MPI or the
+ipython parallel interface (which can run on top of MPI).
+

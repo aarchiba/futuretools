@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+# This code is based on that found in the Wikipedia entry for
+# "Adaptive Simpson's method", which is under the Creative Commons
+# Attribution-ShareAlike license. What this means for code I leave
+# to your imagination.
+
 import concurrent.futures
 import asyncio
 import time
