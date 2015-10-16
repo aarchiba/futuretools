@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+# You should probably run this as "mpirun -n 8 python mpi_demo.py"
+
 import traceback
 import logging
 from logging import debug

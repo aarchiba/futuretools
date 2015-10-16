@@ -26,6 +26,8 @@ class IpyExecutor(concurrent.futures.Executor):
         self.max_interval = 5e-2 # s
         self.all_done = threading.Event()
         self.all_done.set()
+        self.none_to_run = threading.Event()
+        self.none_to_run.set()
         self._time_to_stop = threading.Event()
         self._dispatcher_thread = threading.Thread(target=self._dispatcher)
         self._dispatcher_thread.start()
@@ -34,7 +36,7 @@ class IpyExecutor(concurrent.futures.Executor):
 
     def submit(self, fn, *args, **kwargs):
         f = concurrent.futures.Future()
-        self.all_done.clear()
+        self.none_to_run.clear()
         self.to_run.put((f,fn,args,kwargs))
         return f
 
@@ -47,6 +49,8 @@ class IpyExecutor(concurrent.futures.Executor):
             if self._time_to_stop.is_set():
                 break
             f, fn, args, kwargs = self.to_run.get()
+            if self.to_run.empty():
+                self.none_to_run.set()
             if fn is None:
                 continue
             with self._recheck_nodes:
@@ -56,6 +60,7 @@ class IpyExecutor(concurrent.futures.Executor):
                 r = self.view.apply_async(fn, *args, **kwargs)
                 r.future = f
                 with self._in_progress_lock:
+                    self.all_done.clear()
                     self._in_progress.append(r)
 
     def _collector(self):
@@ -78,8 +83,6 @@ class IpyExecutor(concurrent.futures.Executor):
                 except Exception as e:
                     r.future.set_exception(e)
             if finished:
-                qs = self.view.queue_status()
-                idle = [n for n in qs if n!='unassigned' and qs[n]['tasks']==0]
                 with self._recheck_nodes:
                     self._recheck_nodes.notify_all()
                 interval = self.min_interval
@@ -94,6 +97,7 @@ class IpyExecutor(concurrent.futures.Executor):
 
     def shutdown(self, wait=True):
         if wait:
+            self.none_to_run.wait()
             self.all_done.wait()
         self._time_to_stop.set()
         # wake the submitter thread if it's waiting for a job
