@@ -11,3 +11,22 @@ concurrent.futures to express concurrency, and Executor implementations to allow
 these algorithms to use other kinds of parallelism, for example, MPI or the
 ipython parallel interface (which can run on top of MPI).
 
+Notable items:
+
+mpi_executor.py: provides an Executor that works in an MPI context, running the
+                 main process on rank 0 and the worker nodes on the rest of the
+                 ranks. See mpi_demo.py for an example use.
+
+ipy_executor.py: provides an Executor that uses an ipyparallel cluster of
+                 workers to execute its tasks. These clusters can be set
+                 up to use local process pools, MPI-started process pools,
+                 or processes started by sshing into cluster nodes. This
+                 executor allows interactive use. See ipy_executor_demo.ipynb
+                 for an example use.
+
+thread_derivative.py: robust numerical gradients computed in parallel, based
+                      on the MINUIT code. Uses a thread pool on the main node
+                      to eke out a little more parallelism.
+
+async_*.py: demo programs using coroutines to get parallelism out of nontrivial
+            algorithms.
