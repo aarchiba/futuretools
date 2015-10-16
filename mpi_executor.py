@@ -37,6 +37,7 @@ mpi4py.rc.threaded = True
 mpi4py.rc.thread_level = 'funneled'
 from mpi4py import MPI
 
+import traceback
 from logging import debug
 #debug = print
 #debug = lambda x: None
@@ -73,6 +74,27 @@ class WorkItem(object):
         self.args = args
         self.kwargs = kwargs
 
+# Hack to embed stringification of remote traceback in local traceback
+# from python 3.5's ProcessPoolExecutor
+
+class _RemoteTraceback(Exception):
+    def __init__(self, tb):
+        self.tb = tb
+    def __str__(self):
+        return self.tb
+
+class _ExceptionWithTraceback:
+    def __init__(self, exc, tb):
+        tb = traceback.format_exception(type(exc), exc, tb)
+        tb = ''.join(tb)
+        self.exc = exc
+        self.tb = '\n"""\n%s"""' % tb
+    def __reduce__(self):
+        return _rebuild_exc, (self.exc, self.tb)
+
+def _rebuild_exc(exc, tb):
+    exc.__cause__ = _RemoteTraceback(tb)
+    return exc
 
 class MPIExecutor(concurrent.futures.Executor):
     def __init__(self, comm=None):
@@ -254,6 +276,7 @@ class MPIExecutor(concurrent.futures.Executor):
             try:
                 result = self.function(*args,**kwargs)
             except Exception as exc:
+                exc = _ExceptionWithTraceback(exc, exc.__traceback__)
                 result = _exception_wrapper(exc)
             debug("Worker {0} sending answer {1} with tag {2}."
                   .format(self.rank-1, result, status.tag))

@@ -34,6 +34,7 @@ if __name__=='__main__':
         try:
             print(list(M.map(bonk, range(10))))
         except ValueError as e:
+            print("Caught a ValueError:")
             traceback.print_exc()
         M.shutdown()
     else:
