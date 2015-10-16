@@ -1,14 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import traceback
 import logging
 from logging import debug
-
-debug = print
-
-import mpi4py.rc
-print("threaded:",mpi4py.rc.threaded)
-print("thread_level:",mpi4py.rc.thread_level)
 
 import mpi_executor
 
@@ -18,6 +13,11 @@ def square(x):
 def cube(x):
     return x**3
 
+def bonk(x):
+    if x==7:
+        raise ValueError("bonk")
+    else:
+        return x
 if __name__=='__main__':
     M = mpi_executor.MPIExecutor()
     logging.basicConfig(filename='process-{0}.log'.format(M.rank),
@@ -27,7 +27,12 @@ if __name__=='__main__':
         debug("Sending jobs to master")
         M.submit(square, -1)
         M.submit(cube, -1)
-        print(list(M.map(square, range(100))))
-        print(list(M.map(cube, range(100))))
+        print(list(M.map(square, range(10))))
+        print(list(M.map(cube, range(10))))
+        try:
+            print(list(M.map(bonk, range(10))))
+        except ValueError as e:
+            traceback.print_exc()
+        M.shutdown()
     else:
         M.wait()
