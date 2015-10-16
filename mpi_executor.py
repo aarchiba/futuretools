@@ -4,18 +4,20 @@
 """Implements MPIExecutor.
 
 An MPIExecutor maintains one thread internally, which must make all
-MPI calls. This thread is handed work from the main program. Submitted
-jobs go on _work_queue; the dispatcher
-thread watches this queue and _idle_nodes. When both a job and an idle
-node are available, the job is submitted to the idle node, and its
-details are put on the _new_in_progress queue. The dispatcher thread
-sends an MPI message to the master process (itself). The collector thread
-is normally waiting for MPI messages from either itself or any of the
-_in_progress jobs. If it gets a message from itself, it empties the
-_new_in_progress queue into the _in_progress list. If it gets a message
-from one of the _in_progress jobs, then that job is finished or raised
-an exception; set the state of the appropriate future and add the machine
-to the _idle_nodes queue.
+MPI calls. This thread is handed work from the main program.
+When both a job and an idle
+node are available, the job is submitted to the idle node. Then the
+thread checks for incoming messages (completed results); any such
+are handed back to the Future and the node is marked as clear. The
+process then waits a short time (1 to 50 ms, falling off exponentially
+if nothing happens) before repeating the queries.
+
+Polling is necessary because (at least) OpenMPI does not support
+being called from multiple threads, and receiving messages blocks
+the whole thread; there is no way for it to react to newly-submitted
+jobs unless they generate MPI messages, and any such messages would
+have to come from a different process. MPI also does not support a
+timeout on recv.
 
 Jobs are assigned a unique integer id at the moment of submission, and
 _jobs is a dictionary mapping ids to work items (future, function, arguments).
@@ -112,27 +114,44 @@ class MPIExecutor(concurrent.futures.Executor):
         while True:
             debug("Top of dispatcher.")
             did_something = False
+
             if job is None:
                 with self._jobs_lock:
+                    # Are we waiting for jobs to finish? If not, might as well
+                    # block until new ones submitted.
                     todo = len(self._jobs)>0
                 if not todo and self._stop_now.is_set():
                     break
                 try:
-                    job = self._work_queue.get(block=not todo)
+                    if todo:
+                        job = self._work_queue.get(timeout=interval)
+                    else:
+                        job = self._work_queue.get()
+                except queue.Empty:
+                    job = None
+                else:
                     debug("Got task {0}: {1}(*{2},**{3})."
                           .format(job.jobid, job.fn, job.args, job.kwargs))
                     if job.fn is None:
+                        # just a wakeup call
                         with self._jobs_lock:
                             self._jobs.pop(job.jobid)
                         job = None
-                except queue.Empty:
-                    job = None
+
             node = None
             for i, j in enumerate(self._in_progress):
                 if j is None:
                     node = i
                     debug("Found node {0} free.".format(node))
                     break
+            if node is None:
+                if job is None:
+                    # If no job to do then we already slept in .get()
+                    pass
+                else:
+                    # give it time for a node to free up
+                    debug("Sleeping for {0} sec.".format(interval))
+                    time.sleep(interval)
 
             if (job is not None
                 and node is not None):
@@ -180,8 +199,6 @@ class MPIExecutor(concurrent.futures.Executor):
             if did_something:
                 interval = self.min_interval
             else:
-                debug("Sleeping for {0} sec.".format(interval))
-                time.sleep(interval)
                 interval = min(interval*1.1, self.max_interval)
         debug("Dispatcher loop exited.")
         for node in range(self.size):
