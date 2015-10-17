@@ -130,13 +130,5 @@ class IpyExecutor(concurrent.futures.Executor):
         # Wake up dispatcher
         self.submit(None)
         if wait:
-            self._no_more_jobs.wait()
-            def no_jobs():
-                with self._in_progress_lock:
-                    return self.to_run.empty() and len(self._in_progress)==0
-            with self._recheck_nodes:
-                self._recheck_nodes.wait_for(no_jobs)
-        # wake the submitter thread if it's waiting for a job
-        if wait:
             self._dispatcher_thread.join()
             self._collector_thread.join()
