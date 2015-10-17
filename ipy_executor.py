@@ -42,7 +42,7 @@ class IpyExecutor(concurrent.futures.Executor):
         self._collector_thread.start()
 
     def submit(self, fn, *args, **kwargs):
-        if self._time_to_stop.is_set() and fn is not None:
+        if self._time_to_stop.is_set():
             raise ValueError("Job submitted after shutdown called")
         f = concurrent.futures.Future()
         self.to_run.put((f,fn,args,kwargs))
@@ -53,16 +53,11 @@ class IpyExecutor(concurrent.futures.Executor):
             return len(self._in_progress)<len(self.view)
 
     def _dispatcher(self):
-        while True:
-            if (self._time_to_stop.is_set()
-                and self.to_run.empty()):
-                self._no_more_jobs.set()
-                # Wake up collector
-                with self._recheck_nodes:
-                    self._recheck_nodes.notify_all()
-                break
+        while not (self._time_to_stop.is_set()
+                   and self.to_run.empty()):
             f, fn, args, kwargs = self.to_run.get()
-            if fn is None:
+            if f is None:
+                # asked to wake up by shutdown
                 continue
             with self._recheck_nodes:
                 self._recheck_nodes.wait_for(self._node_free)
@@ -73,6 +68,10 @@ class IpyExecutor(concurrent.futures.Executor):
                     self._in_progress.append(r)
                 with self._recheck_nodes:
                     self._recheck_nodes.notify_all()
+        self._no_more_jobs.set()
+        # Wake up collector
+        with self._recheck_nodes:
+            self._recheck_nodes.notify_all()
 
     def _collector(self):
         # It seems that zmq requires polling, so we're stuck
@@ -118,9 +117,9 @@ class IpyExecutor(concurrent.futures.Executor):
                     self._recheck_nodes.notify_all()
                 interval = self.min_interval
             else:
-                # We always start the job with at least one job
-                # so if nothing finished we've got one in progress;
-                # give it time to finish (backing off exponentially)
+                # We always start the loop with at least one job
+                # so if nothing finished we've got some in progress;
+                # give them time to finish (backing off exponentially)
                 time.sleep(interval)
                 interval = min(interval*1.1, self.max_interval)
 
@@ -128,7 +127,7 @@ class IpyExecutor(concurrent.futures.Executor):
     def shutdown(self, wait=True):
         self._time_to_stop.set()
         # Wake up dispatcher
-        self.submit(None)
+        self.to_run.put((None,None,None,None))
         if wait:
             self._dispatcher_thread.join()
             self._collector_thread.join()
